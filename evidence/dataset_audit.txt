@@ -1,0 +1,8 @@
+Prepared from the original dataset; original files and Data Set.rar backup were not modified.
+Exact byte-identical image copies were consolidated. When a duplicate occurred across splits, the test copy was preferred, then validation, then train; annotations from copies were reconciled.
+Two visually confirmed missing plate boxes were added. One empty label remains as a valid no-visible-plate example.
+Near-duplicate images were not automatically detected. Plate text is not included; this dataset trains detection only.
+
+train: 821 images, 844 plate boxes, 1 empty labels
+val: 141 images, 157 plate boxes, 0 empty labels
+test: 199 images, 274 plate boxes, 0 empty labels

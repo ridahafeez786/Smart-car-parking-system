@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SmartPark · Parking desk</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="SmartPark home"><span class="brand-mark">P</span><span>SmartPark<small>PARKING MANAGEMENT</small></span></a>
+    <div class="nav-label">WORKSPACE</div>
+    <a class="nav-link selected" href="#desk">▦ <span>Parking desk</span></a>
+    <a class="nav-link" href="#records">☷ <span>Vehicle records</span></a>
+    <div class="sidebar-note"><span class="small-dot"></span> Local parking station<p>Review a plate. Record a visit.<br>Keep every receipt.</p></div>
+  </aside>
+  <main>
+    <header class="topbar"><span>Operations <span class="slash">/</span> Parking desk</span><span id="connection" class="pill">Connecting…</span></header>
+    <div class="workspace">
+      <section class="page-heading"><div><p class="eyebrow">SMART PARKING SYSTEM</p><h1>Parking desk</h1><p class="muted">From arrival to departure, all in one place.</p></div><div class="date-block" id="clock"></div></section>
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+      <section class="stats" aria-label="Parking overview">
+        <article class="stat"><span class="stat-label">Vehicles parked <span class="stat-icon">P</span></span><strong id="active-count">—</strong><small>Currently inside</small></article>
+        <article class="stat"><span class="stat-label">Completed visits <span class="stat-icon">↗</span></span><strong id="closed-count">—</strong><small>All recorded departures</small></article>
+        <article class="stat"><span class="stat-label">Parking charges <span class="stat-icon">₨</span></span><strong id="total-charges">—</strong><small>Total billed · payment collection not tracked</small></article>
+      </section>
+      <section id="desk" class="desk-grid">
+        <article class="panel scan-panel">
+          <div class="panel-heading"><div><h2>Recognize a plate</h2><p>Upload a vehicle photo to get started.</p></div><span class="step">01</span></div>
+          <label class="upload-zone" id="upload-zone" for="image-file"><span class="upload-icon">↑</span><strong>Choose a vehicle image</strong><span>JPG, PNG or WebP · up to 12 MB</span><input id="image-file" type="file" accept="image/jpeg,image/png,image/webp"></label>
+          <div id="preview" hidden><canvas id="photo" aria-label="Vehicle image with detected plate boxes"></canvas><p id="filename" class="muted filename"></p></div>
+          <div class="scan-actions"><span id="scan-hint" class="muted">Or enter the plate manually in the next panel.</span><button id="scan" class="button primary" disabled>Read plate <span>→</span></button></div>
+          <div id="scan-progress" class="scan-progress" role="status" hidden><span class="spinner"></span><span>Reading the plate… The first scan may take a few minutes while OCR loads.</span></div>
+          <div id="candidates" class="candidates" aria-label="Detected plates"></div>
+        </article>
+        <article class="panel review-panel">
+          <div class="panel-heading"><div><h2>Record a visit</h2><p>Check the plate before saving.</p></div><span class="step">02</span></div>
+          <div class="segmented" role="group" aria-label="Vehicle movement"><button id="entry-mode" aria-pressed="true" class="chosen" type="button">↘ Entry</button><button id="exit-mode" aria-pressed="false" type="button">↗ Exit</button></div>
+          <form id="visit-form">
+            <label class="field-label" for="plate">License plate</label><input id="plate" class="plate-input" placeholder="e.g. TN99F2378" maxlength="30" autocomplete="off" required>
+            <p id="match-note" class="field-note">Confirm an arrival to start a parking session.</p>
+            <label class="confirm-row"><input id="confirmed" type="checkbox" required><span>I checked this plate against the vehicle or its image.</span></label>
+            <div class="tariff"><span class="tariff-symbol">₨</span><div><strong id="rate">Loading tariff…</strong><small>Demo tariff · each started hour<br>Minimum 1 hour · no grace period</small></div></div>
+            <button id="save-visit" class="button primary full" type="submit" disabled>Confirm entry</button>
+          </form>
+          <p class="review-footnote">A confident OCR reading can still be wrong. Edit any incorrect characters above.</p>
+        </article>
+      </section>
+      <section class="panel records-panel" id="records">
+        <div class="panel-heading"><div><h2>Vehicle records</h2><p>Active visits and completed parking history.</p></div><button id="refresh" class="button secondary" type="button">↻ Refresh</button></div>
+        <div class="records-toolbar"><div class="record-tabs" role="group" aria-label="Record type"><button class="current" id="active-tab" aria-pressed="true">Active parking</button><button id="history-tab" aria-pressed="false">History & receipts</button></div><input id="search" type="search" placeholder="Search a plate…" aria-label="Search vehicle records"></div>
+        <div class="table-wrap"><table><thead id="table-head"></thead><tbody id="table-body"></tbody></table></div>
+        <div id="empty-state" class="empty-state" hidden><span>▤</span><h3>No vehicles parked yet</h3><p>Confirm an entry above to start your first visit.</p></div>
+        <p class="records-note">Lists show up to 500 recent visits per view. Times are shown in Pakistan time (UTC+5).</p>
+      </section>
+      <footer>SmartPark <span>Computer vision capstone · Local workspace</span></footer>
+    </div>
+  </main>
+  <dialog id="receipt-dialog" aria-labelledby="receipt-title"><div class="receipt-brand"><span class="brand-mark">P</span><strong>SmartPark</strong></div><p class="eyebrow">PARKING RECEIPT</p><h2 id="receipt-title">Visit complete</h2><div id="receipt-content"></div><p class="receipt-policy">Charges are per started hour, with a one-hour minimum. Times shown in Pakistan time. This receipt records the charge, not payment confirmation.</p><div class="dialog-actions"><button id="close-receipt" class="button secondary">Close</button><button id="print-receipt" class="button primary">Print / Save PDF</button></div></dialog>
+</body>
+</html>

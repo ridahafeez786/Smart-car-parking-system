@@ -1,0 +1,40 @@
+.venv/
+__pycache__/
+*.py[cod]
+runs/
+/Data Set/
+/Data Set Cleaned/
+/Data Set.rar
+/Data Set Cleaned.zip
+/best.pt
+/storage/
+
+# Local datasets, generated outputs, and duplicate workstation configuration
+/tmp/
+/output/
+/data.yaml
+/train_plate_detector_colab.ipynb
+*.zip
+*.rar
+*.pt
+*.onnx
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+
+# Private configuration and editor/runtime files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+.pytest_cache/
+*.log
+.DS_Store
+Thumbs.db
+
+# Original report screenshots may include vehicle plates or browser account details.
+# The empty dashboard preview is safe to include; keep other evidence locally.
+/evidence/*.png
+/evidence/*_test.jpg

@@ -1,0 +1,23 @@
+name: Parking tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  parking-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install API test dependencies
+        run: python -m pip install fastapi
+      - name: Check Python syntax
+        run: python -m compileall -q backend tests
+      - name: Test parking records and billing
+        run: python -m unittest discover -s tests -v
