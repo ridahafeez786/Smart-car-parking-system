@@ -1,0 +1,7 @@
+**
+!Dockerfile
+!backend/
+!backend/**
+!best.pt
+**/__pycache__/
+**/*.pyc

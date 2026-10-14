@@ -1,6 +1,7 @@
 """Local FastAPI service for license-plate detection with the trained YOLO model."""
 
 from contextlib import asynccontextmanager
+import os
 from io import BytesIO
 from pathlib import Path
 from threading import RLock
@@ -18,6 +19,7 @@ from backend.ocr_engine import PlateOCR
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WEIGHTS_PATH = PROJECT_ROOT / "best.pt"
+DATABASE_PATH = Path(os.environ.get("SMARTPARK_DB_PATH", str(PROJECT_ROOT / "storage" / "parking.sqlite3")))
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 INFERENCE_LOCK = RLock()
 
@@ -27,7 +29,7 @@ async def lifespan(app: FastAPI):
     if not WEIGHTS_PATH.is_file():
         raise RuntimeError(f"Trained weights not found: {WEIGHTS_PATH}")
     app.state.model = YOLO(str(WEIGHTS_PATH))
-    app.state.parking = ParkingStore(PROJECT_ROOT / "storage" / "parking.sqlite3")
+    app.state.parking = ParkingStore(DATABASE_PATH)
     yield
 
 

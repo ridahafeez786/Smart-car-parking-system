@@ -87,7 +87,29 @@ GitHub Actions runs the parking tests on pushes and pull requests. These check a
 
 The Colab training notebook is [`notebooks/train_plate_detector_colab.ipynb`](notebooks/train_plate_detector_colab.ipynb). It uses the cleaned YOLO dataset and saves `best.pt`. Keep the test split for final evaluation; use the validation split when comparing training settings or confidence thresholds.
 
-The dataset is not included in this repository. It contains third-party vehicle images; check its license and permissions before redistributing it. The cleaned local copy, archive files, model weights, and training outputs are ignored by Git.
+The dataset is not included in this repository. It contains third-party vehicle images; check its license and permissions before redistributing it. The cleaned local copy, archive files, and training outputs are ignored by Git. The project-trained root `best.pt` is included for deployment; other model files remain ignored.
+
+## Railway deployment
+
+Deploy the repository root using the included `Dockerfile` and `railway.json`.
+Keep the service Root Directory at `/`, and clear any custom build/start command
+overrides so the Docker configuration is used. The container installs CPU PyTorch,
+loads the trained weights and RapidOCR during its build, and runs one Uvicorn worker
+on Railway's `PORT`. The `/health` endpoint checks startup.
+
+Attach a persistent volume at `/data` and set the service variable
+`SMARTPARK_DB_PATH=/data/parking.sqlite3` before recording visits. Without a volume,
+records in the container filesystem can disappear on redeployment. This starts a
+fresh cloud database; local parking history is not uploaded.
+
+After deployment succeeds, use Settings > Networking > Generate Domain and open
+the HTTPS address. Allow camera access in the browser. Test image upload, entry,
+exit, receipt, camera rearming, and persistence after a restart. Monitor memory and
+usage while OCR runs; hosting does not guarantee recognition accuracy or latency.
+
+This deployment is a shared demo parking lot, without authentication: public
+visitors can see its records and trigger events. Use demo plates only. The supplied
+Docker context excludes datasets, local databases, reports, and private settings.
 
 ## Repository layout
 
