@@ -138,3 +138,13 @@ The default recognizer is RapidOCR 3.10.0 using bundled PP-OCRv6 models and ONNX
 Four previously inspected development images were compared: Cars281, Cars320, Cars307 and Cars323. EasyOCR read 3/4 correctly; the RapidOCR pipeline read 4/4, including MH01DB0001 on the green plate. This small, targeted comparison helped select an engine and fallback; it is **not a held-out OCR accuracy benchmark**. In this run EasyOCR took about 0.18–0.27 s per crop and RapidOCR about 0.93–1.60 s, excluding shared YOLO detection and including lazy initialization where applicable. Measure live latency separately.
 
 Reproduce with `python scripts/compare_ocr.py` after installing requirements and supplying the original local dataset and weights. Results are saved in `evidence/ocr_comparison.json`. To compare with the previous engine, set `$env:SMARTPARK_OCR="easyocr"` before starting Uvicorn. Default is `rapidocr`; switching requires a server restart.
+
+Cloud latency update: OCR now tries a 256-pixel minimum side before retrying
+the original 736-pixel setting on uncertain text. All four known development
+plates remained correct in `evidence/ocr_resize_regression.json`; this is a
+regression check, not held-out evaluation or a Railway latency benchmark.
+Difficult crops may take longer due to the retry. The Docker build exercises OCR
+to include its lazily downloaded models before deployment. Scan responses include
+`processing_seconds`, and server logs report scan status, action, and elapsed
+processing time without printing plate numbers. Camera recording still requires
+three consistent readings above the detection/OCR thresholds.

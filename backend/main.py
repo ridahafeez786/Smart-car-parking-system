@@ -2,6 +2,8 @@
 
 from contextlib import asynccontextmanager
 import os
+import logging
+from time import perf_counter
 from io import BytesIO
 from pathlib import Path
 from threading import RLock
@@ -59,6 +61,7 @@ def health():
 
 def detect_image(file, confidence=0.25, include_ocr=False):
     """Return plate boxes in pixel coordinates for one uploaded image."""
+    started = perf_counter()
     if file.content_type and not file.content_type.startswith("image/"):
         raise HTTPException(status_code=415, detail="Upload an image file.")
 
@@ -131,6 +134,7 @@ def detect_image(file, confidence=0.25, include_ocr=False):
         "image_height": image.height,
         "count": len(detections),
         "ocr_enabled": include_ocr,
+        "processing_seconds": round(perf_counter() - started, 3),
         "detections": detections,
     }
 
@@ -150,4 +154,8 @@ def automatic_scan(event_id: UUID, file: UploadFile = File(...),
     with INFERENCE_LOCK:
         prediction = detect_image(file, include_ocr=True)
         event = app.state.parking.auto_scan(prediction["detections"], str(event_id), source, str(station_id))
+        logging.getLogger("uvicorn.error").info(
+            "scan source=%s status=%s action=%s seconds=%.3f",
+            source, event["status"], event.get("action", "none"), prediction["processing_seconds"],
+        )
     return {**prediction, "event": event}

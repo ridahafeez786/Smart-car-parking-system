@@ -28,7 +28,9 @@ class PlateOCR:
         self.engine = engine or os.environ.get('SMARTPARK_OCR', 'rapidocr').lower()
         if self.engine == 'rapidocr':
             from rapidocr import RapidOCR
-            self.reader = RapidOCR()
+            # Keep enough detail for stacked plates without the default 736px
+            # minimum side, which expands narrow crops to thousands of pixels.
+            self.reader = RapidOCR(params={"Det.limit_type": "min", "Det.limit_side_len": 256})
         elif self.engine == 'easyocr':
             import easyocr
             self.reader = easyocr.Reader(['en'], gpu=False)
@@ -48,6 +50,18 @@ class PlateOCR:
         result = self.reader(crop, use_det=True, use_cls=False, use_rec=True, text_score=0.0)
         parsed = assemble(rapid_parts(result, crop.size))
         parsed.update(engine='rapidocr', method='text_blocks')
+        # Stacked layouts can need the original resolution. The service lock
+        # serializes calls; always restore the fast setting for the next plate.
+        if parsed['confidence'] < .80:
+            detector = self.reader.text_det
+            previous_limit = detector.limit_side_len
+            try:
+                detector.limit_side_len = 736
+                result = self.reader(crop, use_det=True, use_cls=False, use_rec=True, text_score=0.0)
+                parsed = assemble(rapid_parts(result, crop.size))
+                parsed.update(engine='rapidocr', method='text_blocks_high_resolution')
+            finally:
+                detector.limit_side_len = previous_limit
         # Whole-crop recognition is suitable for wide, single-line candidates only.
         # Require the two image polarities to agree; do not guess D/O/0 mappings.
         if parsed['confidence'] < .80 and crop.width / max(1,crop.height) >= 2.5:

@@ -15,5 +15,5 @@ RUN pip install -r backend/requirements.txt
 COPY backend/ backend/
 COPY best.pt best.pt
 # Confirm weights and OCR dependencies load during the build.
-RUN python -c "from ultralytics import YOLO; from backend.ocr_engine import PlateOCR; YOLO('best.pt'); PlateOCR()"
+RUN python -c "from PIL import Image; from ultralytics import YOLO; from backend.ocr_engine import PlateOCR; YOLO('best.pt'); PlateOCR().read(Image.new('RGB', (400, 100), 'white'))"
 CMD ["sh", "-c", "exec uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
