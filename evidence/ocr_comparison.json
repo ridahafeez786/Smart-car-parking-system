@@ -1,0 +1,98 @@
+{
+  "scope": "Four previously inspected development examples, not an accuracy benchmark",
+  "results": [
+    {
+      "image": "Cars281",
+      "expected": "MH01DB0001",
+      "engine": "easyocr",
+      "raw_text": "MH010B0001",
+      "normalized_text": "MH010B0001",
+      "confidence": 0.2686,
+      "needs_manual_review": true,
+      "exact_match": false,
+      "seconds": 0.269
+    },
+    {
+      "image": "Cars281",
+      "expected": "MH01DB0001",
+      "engine": "rapidocr",
+      "raw_text": "MH 01 DB 0001",
+      "normalized_text": "MH01DB0001",
+      "confidence": 0.9705,
+      "needs_manual_review": false,
+      "preprocessing_agreement": true,
+      "method": "whole_crop_agreement",
+      "exact_match": true,
+      "seconds": 1.6
+    },
+    {
+      "image": "Cars320",
+      "expected": "KA09MA2662",
+      "engine": "easyocr",
+      "raw_text": "KA-09 MA 2662",
+      "normalized_text": "KA09MA2662",
+      "confidence": 0.8403,
+      "needs_manual_review": false,
+      "exact_match": true,
+      "seconds": 0.274
+    },
+    {
+      "image": "Cars320",
+      "expected": "KA09MA2662",
+      "engine": "rapidocr",
+      "raw_text": "KA-09 MA 2662",
+      "normalized_text": "KA09MA2662",
+      "confidence": 0.9391,
+      "needs_manual_review": false,
+      "method": "text_blocks",
+      "exact_match": true,
+      "seconds": 0.928
+    },
+    {
+      "image": "Cars307",
+      "expected": "M906090K",
+      "engine": "easyocr",
+      "raw_text": "M906090K",
+      "normalized_text": "M906090K",
+      "confidence": 0.9949,
+      "needs_manual_review": false,
+      "exact_match": true,
+      "seconds": 0.193
+    },
+    {
+      "image": "Cars307",
+      "expected": "M906090K",
+      "engine": "rapidocr",
+      "raw_text": "M\u00b790 6090\u00b7K",
+      "normalized_text": "M906090K",
+      "confidence": 0.9153,
+      "needs_manual_review": false,
+      "method": "text_blocks",
+      "exact_match": true,
+      "seconds": 1.477
+    },
+    {
+      "image": "Cars323",
+      "expected": "TN99F2378",
+      "engine": "easyocr",
+      "raw_text": "TN99F2378",
+      "normalized_text": "TN99F2378",
+      "confidence": 0.9995,
+      "needs_manual_review": false,
+      "exact_match": true,
+      "seconds": 0.177
+    },
+    {
+      "image": "Cars323",
+      "expected": "TN99F2378",
+      "engine": "rapidocr",
+      "raw_text": "TN 99 F 2378",
+      "normalized_text": "TN99F2378",
+      "confidence": 0.9639,
+      "needs_manual_review": false,
+      "method": "text_blocks",
+      "exact_match": true,
+      "seconds": 1.499
+    }
+  ]
+}

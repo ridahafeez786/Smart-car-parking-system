@@ -1,51 +1,44 @@
-# Smart Parking API: first milestone
+# Smart Parking backend
 
-## Dashboard
-
-Open **http://127.0.0.1:8000/** while the API server is running. Upload a vehicle photo, click **Read plate**, review the recognized text, choose Entry or Exit, and confirm. Active visits and history are searchable below. **Check out** selects a parked vehicle for exit; the receipt supports browser printing or Save as PDF. No additional packages or frontend server are required.
-
-For isolated browser testing, run `.\.venv\Scripts\python.exe tests\preview_dashboard.py` and open port 8001. This uses the real model with a temporary parking database, separate from your saved visits. Stop the test server with Ctrl+C afterward.
-
-This local API loads the project's `best.pt` weights, detects license-plate boxes, and can optionally read plate characters with EasyOCR. It runs inference on the CPU, so no local GPU is needed. OCR results are uncertain and must be reviewed before being used to open or close a parking session.
-
-## Run on Windows
-
-Open the project folder in VS Code, then open **Terminal → New Terminal**. In PowerShell, run:
+Run from the project root with the existing environment:
 
 ```powershell
-py -3.14 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
 ```
 
-If dependency installation reports that a package has no compatible Python build, install Python 3.12 and replace `py -3.14` with `py -3.12` when creating `.venv`.
+Open http://127.0.0.1:8000/ for the automatic dashboard. See the root README for installation and camera-demo steps. Keep `best.pt` in the project root. Inference uses CPU; the first OCR request initializes RapidOCR and its local ONNX models.
 
-When the server starts, open <http://127.0.0.1:8000/docs>, expand **POST /predict**, choose an image of a car, and set `include_ocr` to `true` to read plate text. Select **Execute**. The first OCR request may download EasyOCR's English model files and take longer; later requests reuse the loaded model. The response includes the plate bounding box, detection confidence, recognized text, OCR confidence, and a manual-review flag. `/health` reports whether the weights loaded.
+## Automatic endpoint
 
-The model file is expected at the project root as `best.pt`. Keep a backup of it. Do not move it into the `backend` directory.
+`POST /parking/scan?event_id=<UUID>&source=upload` accepts an image in multipart field `file`. Camera calls use `source=camera&station_id=<persistent UUID>` as well. The backend performs detection and OCR itself, then returns detections and an `event` object. It never trusts caller-supplied plate text in this endpoint.
 
-## Try a complete parking visit
+- Upload: exactly one distinct sufficiently confident, valid plate immediately toggles its active session, even when other detections are unreadable. Duplicate readings of that same identifier count once. More than one distinct readable identifier remains ambiguous.
+- Camera: three matching frames spanning two seconds are required. The same plate is suppressed until three blank frames spanning three seconds. Uncertain or multiple detections do not rearm it.
+- OCR accepts hyphens during recognition, orders spatial text blocks before normalization, and uses the least confident block as its score so a weak prefix cannot be hidden by a strong suffix.
+- Detection score must be at least 0.50 and OCR score at least 0.80, with 4–15 ASCII letters/digits including a digit. These are initial heuristics, not calibrated accuracy guarantees.
+- Reuse the event UUID when retrying a failed request. A recorded event returns the same response without another mutation. The dashboard submits only one request at a time.
+- Camera gates are saved in SQLite and survive server/browser refresh. The browser keeps its station ID in local storage. Use one station tab for the demo.
 
-Refresh `/docs` after the server reloads to see the **Parking** endpoints.
+`event.status` can be `processed`, `stabilizing`, `already_seen`, `ready`, `rearming`, `empty`, `uncertain`, or `multiple`. Accepted events also contain `action` (`entry` or `exit`) and `session`.
 
-1. Use `/predict` with OCR enabled and check the plate text against the image.
-2. Open `POST /parking/entry`, choose **Try it out**, and send:
+## Billing and records
 
-   ```json
-   {"plate": "TN99F2378", "confirmed": true}
-   ```
+New visits use **PKR 10 per started minute**, minimum one minute. Money is integer minor units; 1000 minor units equals PKR 10. Server timestamps use UTC. The rate and unit are saved at entry. Legacy visits keep their original hourly rates. Closed visits remain in history and their receipts are immutable.
 
-3. Copy the returned `id`. `GET /parking/active` shows the vehicle and its arrival time.
-4. At exit, check the plate again. In `POST /parking/sessions/{session_id}/exit`, paste the saved `id` into `session_id` and send the same confirmed plate body.
-5. The response includes departure time, duration, billed hours, amount, and a receipt URL. `GET /parking/history` retains the completed visit; `/parking/active` no longer includes it.
+`GET /parking/active`, `/parking/history`, `/parking/summary`, `/parking/pricing`, and `/parking/sessions/{id}/receipt` support the dashboard. Receipt JSON is displayed and printed/saved as PDF in the browser.
 
-The initial demo tariff is **PKR 100 per started hour**, minimum one hour and no grace period. An immediate exit therefore costs PKR 100; exactly one hour costs PKR 100, and one hour plus any fraction costs PKR 200. This is an illustrative tariff, not an agreed real parking rate. Money is stored as integer minor units (100 minor units = PKR 1); the response also includes a formatted `amount`. The rate is saved at entry so later changes cannot alter existing visits.
+`POST /predict` remains a read-only detection/OCR endpoint. Earlier confirmed manual entry and exit endpoints remain available for compatibility, but the automatic dashboard does not call them.
 
-Entry and exit timestamps come from the server in UTC. SQLite data is saved in `storage/parking.sqlite3`, persists across server restarts, and is ignored by Git. Duplicate active entries return HTTP 409. Repeating an exit for the same session returns its existing receipt without closing a later visit. Only exactly matching confirmed plates can close a session. The receipt API returns JSON; the dashboard displays a printable receipt that can be saved as PDF using the browser.
-
-Run the parking checks with:
+## Verification
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
+
+For isolated UI testing, run `tests/preview_dashboard.py` with the same Python environment and open http://127.0.0.1:8001/. It loads the real model but uses a temporary database, separate from saved visits. Stop the test server afterward.
+
+Model accuracy must be measured separately. Passing workflow tests does not establish OCR accuracy or real-camera performance.
+
+## OCR engine
+
+RapidOCR is now the default CPU engine. Install the updated requirements and restart the server after dependency changes. `SMARTPARK_OCR=easyocr` keeps the older recognizer available for comparison; `rapidocr` is the default. Responses include `ocr.engine` and `ocr.method`. Wide low-confidence crops may use `whole_crop_agreement`: original and inverted grayscale recognition must agree before acceptance. Confidence thresholds remain unchanged. See the root README and `scripts/compare_ocr.py` for the four-example development comparison and its limitations.

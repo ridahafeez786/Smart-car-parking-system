@@ -4,12 +4,14 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 import re
+import json
 import sqlite3
 from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
+from backend.automation import classify, observe
 
 
 class ConfirmedPlate(BaseModel):
@@ -26,10 +28,10 @@ class ConfirmedPlate(BaseModel):
 
 
 class ParkingStore:
-    def __init__(self, path: Path, hourly_rate_minor=10000):
+    def __init__(self, path: Path, minute_rate_minor=1000):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.hourly_rate_minor = hourly_rate_minor
+        self.minute_rate_minor = minute_rate_minor
         with self.connection() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -41,7 +43,20 @@ class ParkingStore:
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS unique_active_plate
                 ON sessions(plate) WHERE exit_time IS NULL;
+                CREATE TABLE IF NOT EXISTS automatic_events (
+                    event_id TEXT PRIMARY KEY, response_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS camera_gates (
+                    station_id TEXT PRIMARY KEY, state_json TEXT NOT NULL
+                );
             """)
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(sessions)")}
+            for name, definition in [("rate_unit", "TEXT NOT NULL DEFAULT 'hour'"),
+                                     ("unit_rate_minor", "INTEGER"), ("billed_minutes", "INTEGER")]:
+                if name not in columns:
+                    db.execute(f"ALTER TABLE sessions ADD COLUMN {name} {definition}")
+            # Existing visits retain their original hourly tariff; all new visits use minutes.
+            db.execute("UPDATE sessions SET unit_rate_minor=hourly_rate_minor WHERE unit_rate_minor IS NULL")
 
     @contextmanager
     def connection(self):
@@ -53,18 +68,39 @@ class ParkingStore:
         finally:
             db.close()
 
-    def enter(self, plate, now=None):
-        timestamp = (now or datetime.now(timezone.utc)).isoformat()
+    def _enter(self, db, plate, now):
+        timestamp = now.isoformat()
         session_id = str(uuid4())
+        try:
+            db.execute(
+                "INSERT INTO sessions(id,plate,entry_time,hourly_rate_minor,rate_unit,unit_rate_minor) VALUES (?,?,?,?,'minute',?)",
+                (session_id, plate, timestamp, self.minute_rate_minor * 60, self.minute_rate_minor),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(409, "This plate already has an active parking session.") from exc
+        return dict(db.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone())
+
+    def enter(self, plate, now=None):
         with self.connection() as db:
-            try:
-                db.execute(
-                    "INSERT INTO sessions(id,plate,entry_time,hourly_rate_minor) VALUES (?,?,?,?)",
-                    (session_id, plate, timestamp, self.hourly_rate_minor),
-                )
-            except sqlite3.IntegrityError as exc:
-                raise HTTPException(409, "This plate already has an active parking session.") from exc
-            return dict(db.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone())
+            return self._enter(db, plate, now or datetime.now(timezone.utc))
+
+    def _close(self, db, row, end):
+        if row["exit_time"] is not None:
+            return dict(row)
+        elapsed = end - datetime.fromisoformat(row["entry_time"])
+        microseconds = ((elapsed.days * 86400 + elapsed.seconds) * 1000000 + elapsed.microseconds)
+        if microseconds < 0:
+            raise HTTPException(409, "Server time is earlier than the entry time.")
+        unit = 60000000 if row["rate_unit"] == "minute" else 3600000000
+        units = max(1, (microseconds + unit - 1) // unit)
+        db.execute(
+            "UPDATE sessions SET exit_time=?,duration_seconds=?,billed_hours=?,billed_minutes=?,amount_minor=? WHERE id=?",
+            (end.isoformat(), microseconds // 1000000,
+             units if row["rate_unit"] == "hour" else None,
+             units if row["rate_unit"] == "minute" else None,
+             units * row["unit_rate_minor"], row["id"]),
+        )
+        return dict(db.execute("SELECT * FROM sessions WHERE id=?", (row["id"],)).fetchone())
 
     def exit(self, session_id, plate, now=None):
         with self.connection() as db:
@@ -75,20 +111,35 @@ class ParkingStore:
                 raise HTTPException(404, "Parking session not found.")
             if row["plate"] != plate:
                 raise HTTPException(409, "The confirmed plate does not match this session.")
-            if row["exit_time"] is not None:
-                return dict(row)
-            end = now or datetime.now(timezone.utc)
-            elapsed = end - datetime.fromisoformat(row["entry_time"])
-            microseconds = ((elapsed.days * 86400 + elapsed.seconds) * 1000000 + elapsed.microseconds)
-            if microseconds < 0:
-                raise HTTPException(409, "Server time is earlier than the entry time.")
-            # Demo policy: minimum one hour; every started hour is charged; no grace period.
-            hours = max(1, (microseconds + 3600000000 - 1) // 3600000000)
-            db.execute(
-                "UPDATE sessions SET exit_time=?,duration_seconds=?,billed_hours=?,amount_minor=? WHERE id=?",
-                (end.isoformat(), microseconds // 1000000, hours, hours * row["hourly_rate_minor"], session_id),
-            )
-            return dict(db.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone())
+            return self._close(db, row, now or datetime.now(timezone.utc))
+
+    def auto_scan(self, detections, event_id, source="upload", station_id="default", now=None):
+        now = now or datetime.now(timezone.utc)
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            cached = db.execute("SELECT response_json FROM automatic_events WHERE event_id=?", (event_id,)).fetchone()
+            if cached:
+                return json.loads(cached[0])
+            gate = None
+            if source == "camera":
+                saved = db.execute("SELECT state_json FROM camera_gates WHERE station_id=?", (station_id,)).fetchone()
+                gate = json.loads(saved[0]) if saved else {}
+                if gate.get("last_request") == event_id:
+                    return gate["last_response"]
+                response, plate = observe(gate, detections, now.timestamp())
+            else:
+                kind, plate = classify(detections)
+                response = {"status": "processed" if plate else kind, "plate": plate}
+            if plate:
+                current = db.execute("SELECT * FROM sessions WHERE plate=? AND exit_time IS NULL", (plate,)).fetchone()
+                row = self._close(db, current, now) if current else self._enter(db, plate, now)
+                response.update(action="exit" if current else "entry", session=present(row))
+                db.execute("INSERT INTO automatic_events VALUES (?,?)", (event_id, json.dumps(response)))
+            if gate is not None:
+                gate.update(last_request=event_id, last_response=response)
+                db.execute("INSERT INTO camera_gates VALUES (?,?) ON CONFLICT(station_id) DO UPDATE SET state_json=excluded.state_json",
+                           (station_id, json.dumps(gate)))
+            return response
 
     def list_sessions(self, active):
         condition = "IS NULL" if active else "IS NOT NULL"
@@ -119,6 +170,7 @@ def present(row):
     result = dict(row)
     result["status"] = "closed" if row["exit_time"] else "active"
     result["hourly_rate"] = f"{row['hourly_rate_minor'] // 100}.{row['hourly_rate_minor'] % 100:02d}"
+    result["unit_rate"] = f"{row['unit_rate_minor'] // 100}.{row['unit_rate_minor'] % 100:02d}"
     amount = row["amount_minor"]
     result["amount"] = None if amount is None else f"{amount // 100}.{amount % 100:02d}"
     result["receipt_url"] = f"/parking/sessions/{row['id']}/receipt" if row["exit_time"] else None
@@ -135,8 +187,8 @@ def summary(request: Request):
 
 @router.get("/pricing")
 def pricing(request: Request):
-    return {"currency": "PKR", "hourly_rate_minor": request.app.state.parking.hourly_rate_minor,
-            "policy": "Demo rate: PKR 100 per started hour, minimum one hour, no grace period. Rate is saved at entry."}
+    return {"currency": "PKR", "minute_rate_minor": request.app.state.parking.minute_rate_minor,
+            "policy": "PKR 10 per started minute, minimum one minute, no grace period. Rate is saved at entry."}
 
 
 @router.post("/entry", status_code=201)

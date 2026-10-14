@@ -1,26 +1,26 @@
 # Smart Car Parking System
 
-![SmartPark dashboard](evidence/dashboard_ready.jpg)
+A computer-vision capstone prototype for managing parking entry and exit. A local dashboard connects a custom-trained YOLO11n plate detector and RapidOCR with automatic parking records, fee calculation, and receipts.
 
-A computer-vision capstone prototype for managing parking entry and exit. A local dashboard connects a custom-trained YOLO11n plate detector and EasyOCR with operator-confirmed parking records, fee calculation, and receipts.
-
-> **Project status:** The local dashboard supports image upload, plate detection and OCR, editable plate confirmation, entry/exit, searchable records, charges, and browser-printable receipts. Live camera/video processing and broader OCR evaluation remain to be built.
+> **Project status:** Automatic image uploads and browser-camera scanning, plate detection and OCR, entry/exit, searchable records, minute billing, and printable receipts are implemented. Broader OCR and live-camera accuracy evaluation remain outstanding.
 
 ## What it does
 
-The current API accepts an image and returns detected plate bounding boxes and confidence scores; optional OCR returns candidate plate text and a review flag. The intended end-to-end workflow is:
-
 ```text
-Entry/exit image or video → plate detection → OCR → parking session → fee and receipt
+Image upload or camera frame → YOLO plate detection → RapidOCR → automatic entry/exit → receipt
 ```
 
-The detector only locates plates; it does not read the characters yet. The training labels contain plate bounding boxes, not plate text.
+A recognized plate starts a visit if it is not parked. Its next accepted appearance closes the visit. A different plate starts a separate visit. Completed visits stay in history.
+
+Camera mode requires three consistent readings spanning at least two seconds. A recorded plate cannot trigger again until the camera observes no plates for three readings spanning at least three seconds. Unreadable background plates are ignored when exactly one distinct plate passes the acceptance rules. Observations with no readable plate or multiple distinct readable plates are skipped. These rules reduce accidental repeated events; they cannot guarantee correct OCR.
+
+The detector locates plates and RapidOCR reads characters. Training labels contain bounding boxes, not plate text.
 
 ## Model and evaluation
 
 YOLO11n was fine-tuned for 30 epochs using a Tesla T4 in Google Colab. The report keeps validation and held-out test results separate:
 
-| Split | Images | Plate instances | Precision | Recall | mAP@50 | mAP@50–95 |
+| Split | Images | Plate instances | Precision | Recall | mAP@50 | mAP@50-95 |
 |---|---:|---:|---:|---:|---:|---:|
 | Validation | 141 | 157 | 0.922 | 0.866 | 0.914 | 0.634 |
 | Held-out test | 199 | 274 | 0.938 | 0.763 | 0.824 | 0.575 |
@@ -34,7 +34,7 @@ The test set is held out from training. The lower test recall indicates that som
 - **Image handling:** Pillow
 - **Training:** Google Colab with a Tesla T4 GPU
 - **Inference:** CPU supported; a local GPU is not required
-- **Implemented in API:** optional EasyOCR plate text extraction
+- **OCR:** RapidOCR (PP-OCRv6 via ONNX Runtime on CPU); EasyOCR retained as a comparison option
 - **Parking records:** SQLite sessions, fee calculation, and JSON receipts
 - **Interface:** responsive HTML/CSS/JavaScript dashboard served by FastAPI; no frontend build or separate server
 - **Receipts:** view saved visits and print or save as PDF through the browser
@@ -59,9 +59,21 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
 ```
 
-If Python 3.12 is not installed, use another Python version supported by the installed PyTorch and Ultralytics packages. Open **<http://127.0.0.1:8000/>** to use the dashboard. Upload a photo, click **Read plate**, select a plate if several are detected, and correct any OCR errors. Choose **Entry** or **Exit**, check the confirmation box, then save. Active visits appear below; **Check out** prepares an exit for a selected visit. Completed visits include a receipt with **Print / Save PDF**. Manual plate entry is also supported.
+If Python 3.12 is not installed, use a Python version supported by your installed dependencies. Open **<http://127.0.0.1:8000/>** while the server remains running.
 
-The initial demo rate is PKR 100 per started hour with a one-hour minimum and no grace period. Timestamps are displayed in Pakistan time; stored timestamps use UTC. Records persist in the local SQLite database. API documentation remains at <http://127.0.0.1:8000/docs>. The current UI accepts images; live camera/video input is not implemented.
+### Image demo
+
+Select **Upload image** and choose a clear vehicle image. The application reads and records it automatically. Select the same image again to close the visit; select another plate to add another vehicle. No plate typing or confirmation is required. If a request fails, **Retry scan** reuses its event ID to prevent duplicate changes.
+
+### Live camera demo
+
+Select **Live camera → Start camera**, allow the browser's camera permission, and hold your phone's plate image steady in front of the laptop camera. Wait for the entry message. Remove the phone until **Ready** appears, then show the same plate again to exit. Holding it continuously does not repeatedly toggle entry and exit. Use one browser tab as the station; separate tabs or devices are not coordinated as one camera.
+
+The webcam preview is continuous; CPU analysis samples frames sequentially, with a one-second pause between completed requests. Initial OCR loading can take longer. Use localhost or HTTPS for browser camera access. A remote phone browser accessing an ordinary HTTP LAN address may not have camera access.
+
+**Tariff: Rs 10 per started minute**, minimum one minute, no grace period. An immediate exit costs Rs 10; exactly 60 seconds costs Rs 10; 61 seconds costs Rs 20. Existing visits retain the tariff saved at their entry, including older hourly visits. Receipts are available in history with **Print / Save PDF**.
+
+Server timestamps are stored in UTC and displayed in Pakistan time. Records persist in `storage/parking.sqlite3`. API documentation remains at <http://127.0.0.1:8000/docs>.
 
 ## Automated checks
 
@@ -69,7 +81,7 @@ The initial demo rate is PKR 100 per started hour with a one-hour minimum and no
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-GitHub Actions runs the parking tests on pushes and pull requests. These check plate confirmation, duplicate entries, persistence, billing boundaries, repeated exits, receipt access, and summary totals. The checks do not need a GPU, dataset, or model weights; they do not measure model accuracy.
+GitHub Actions runs the parking tests on pushes and pull requests. These check automatic toggling, event retries, camera stability and rearming, persistence, legacy tariff migration, billing boundaries, receipt access, and summary totals. The checks do not need a GPU, dataset, or model weights; they do not measure model accuracy.
 
 ## Train the detector
 
@@ -90,9 +102,17 @@ notebooks/               Training notebook
 ## Limitations and next work
 
 - Evaluate OCR against manually transcribed plates and review uncertain readings.
-- Add a tariff settings interface and live camera/video capture.
+- Evaluate the phone-screen camera demo under blur, glare, motion and varying distances; add a tariff settings interface if needed.
 - Add direct PDF downloads if needed; current PDF saving uses the browser print dialog.
 - Evaluate OCR and the complete entry-to-exit workflow on separately labeled examples.
 - Improve missed detections using validation-set analysis, then report final results once on the held-out test set.
 
-This is an academic prototype, not a production access-control system. Detection errors should be reviewed before charging a vehicle.
+This is an academic prototype, not a production access-control system. Automatic OCR can misidentify a vehicle even with a high score; the prototype is not suitable for unattended real billing without further evaluation and safeguards.
+
+## OCR engine comparison
+
+The default recognizer is RapidOCR 3.10.0 using bundled PP-OCRv6 models and ONNX Runtime 1.31.0 on CPU. Plate images are processed locally. Text blocks are spatially ordered. For wide crops with a weak or missing text detection, recognition of the entire crop is retried with original and inverted grayscale inputs; both must agree and pass the score threshold. Scores from different engines are not calibrated probabilities or directly comparable accuracy measures.
+
+Four previously inspected development images were compared: Cars281, Cars320, Cars307 and Cars323. EasyOCR read 3/4 correctly; the RapidOCR pipeline read 4/4, including MH01DB0001 on the green plate. This small, targeted comparison helped select an engine and fallback; it is **not a held-out OCR accuracy benchmark**. In this run EasyOCR took about 0.18–0.27 s per crop and RapidOCR about 0.93–1.60 s, excluding shared YOLO detection and including lazy initialization where applicable. Measure live latency separately.
+
+Reproduce with `python scripts/compare_ocr.py` after installing requirements and supplying the original local dataset and weights. Results are saved in `evidence/ocr_comparison.json`. To compare with the previous engine, set `$env:SMARTPARK_OCR="easyocr"` before starting Uvicorn. Default is `rapidocr`; switching requires a server restart.

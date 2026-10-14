@@ -23,3 +23,26 @@ The original PNG screenshots and screenshots containing test vehicle plates rema
 - Inference speed shown on the T4: 30.8 ms per validation image.
 
 These are validation metrics from the training run, not the held-out test metrics. Report test-set results separately: 199 images, 274 plate instances, precision 0.938, recall 0.763, mAP@50 0.824, and mAP@50–95 0.575.
+
+## Automatic parking verification (13 October 2026)
+
+- 13 automated tests passed: minute billing, legacy migration, exact upload toggling, idempotent event retry, stable camera readings, hold suppression, blank rearming, uncertainty and restart persistence.
+- Isolated dashboard with real YOLO11n and EasyOCR: Cars323.png uploaded twice, producing entry then exit after 24 seconds; receipt PKR 10. Screenshot: automatic_receipt_test.jpg.
+- Real /parking/scan camera-frame requests using Cars307.png and blank frames: three stable reads entered, repeated plate suppressed, blank sequence rearmed, three stable reads exited; receipt PKR 10.
+- Updated live-camera controls rendered at port 8000 with no browser console errors. Screenshot: automatic_dashboard_test.jpg.
+- These are workflow checks, not an OCR accuracy benchmark. Physical webcam capture and the user's phone-screen demonstration still need testing.
+- All test visits were stored in a separate temporary database on port 8001. The normal database was not populated by these tests.
+
+## Stacked plate OCR fix (13 October 2026)
+
+Cars320.png originally returned MA2662KAJ09 with a 0.735 average OCR score and was correctly rejected by the 0.80 automatic threshold. Allowing hyphens during OCR, resizing the crop toward 400 px width, beam decoding and spatial block ordering now return KA-09 MA 2662 / KA09MA2662. The minimum block score is 0.8403. Scores now use the weakest block rather than the average.
+
+17 unit tests passed. Actual inference and automatic entry passed for Cars320, Cars307 and Cars323; Cars320 exit also passed, all against temporary storage. This is targeted regression verification, not held-out OCR accuracy evaluation. Dashboard rejection notices now explicitly state that no vehicle was added/removed and show the thresholds beside low-confidence detections.
+
+## CPU OCR replacement (13 October 2026)
+
+Installed RapidOCR 3.10.0 / ONNX Runtime 1.31.0, using bundled PP-OCRv6 small detection and recognition models. Added wide-crop recognition fallback requiring agreement across original and inverted grayscale inputs. Made this pipeline the default; EasyOCR remains selectable through SMARTPARK_OCR.
+
+Four development examples: EasyOCR exact matches 3/4; RapidOCR pipeline 4/4. See ocr_comparison.json and scripts/compare_ocr.py. These already-inspected examples informed the change and are not a held-out OCR benchmark. Thresholds remain 0.50 detection / 0.80 OCR. Scores are not accuracy probabilities.
+
+21 unit tests passed. A read-only call to the running /predict endpoint returned Cars281 as MH01DB0001 with score 0.9705 and engine rapidocr. No parking records were changed by this comparison or that API check.

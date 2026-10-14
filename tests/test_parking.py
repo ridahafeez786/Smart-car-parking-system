@@ -21,7 +21,7 @@ class ParkingTests(unittest.TestCase):
         first = self.store.enter("TEST001", self.start)
         self.store.enter("TEST002", self.start)
         self.store.exit(first["id"], first["plate"], self.start + timedelta(minutes=90))
-        self.assertEqual(self.store.summary(), {"active_count": 1, "closed_count": 1, "total_amount_minor": 20000})
+        self.assertEqual(self.store.summary(), {"active_count": 1, "closed_count": 1, "total_amount_minor": 90000})
 
     def test_confirmation_and_normalization(self):
         self.assertEqual(ConfirmedPlate(plate="tn 99-f 2378", confirmed=True).plate, "TN99F2378")
@@ -40,12 +40,12 @@ class ParkingTests(unittest.TestCase):
 
     def test_fee_boundaries_and_entry_rate_snapshot(self):
         for index, (duration, charge) in enumerate([
-            (timedelta(0), 10000), (timedelta(hours=1), 10000),
-            (timedelta(hours=1, microseconds=1), 20000), (timedelta(hours=2), 20000)
+            (timedelta(0), 1000), (timedelta(minutes=1), 1000),
+            (timedelta(minutes=1, microseconds=1), 2000), (timedelta(minutes=2), 2000)
         ]):
             plate = f"TEST{index}"
             row = self.store.enter(plate, self.start)
-            other = ParkingStore(self.path, hourly_rate_minor=50000)
+            other = ParkingStore(self.path, minute_rate_minor=5000)
             closed = other.exit(row["id"], plate, self.start + duration)
             self.assertEqual(closed["amount_minor"], charge)
 
@@ -57,7 +57,7 @@ class ParkingTests(unittest.TestCase):
         self.assertEqual(closed, retry)
         self.assertEqual(self.store.list_sessions(True)[0]["id"], second["id"])
         self.assertEqual(len(self.store.list_sessions(False)), 1)
-        self.assertEqual(present(self.store.receipt(row["id"]))["amount"], "100.00")
+        self.assertEqual(present(self.store.receipt(row["id"]))["amount"], "20.00")
 
     def test_bad_exit_and_active_receipt_do_not_close_session(self):
         row = self.store.enter("TN99F2378", self.start)
