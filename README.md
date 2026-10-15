@@ -1,150 +1,193 @@
-# Smart Car Parking System
+# SmartPark — Smart Car Parking System
 
-A computer-vision capstone prototype for managing parking entry and exit. A local dashboard connects a custom-trained YOLO11n plate detector and RapidOCR with automatic parking records, fee calculation, and receipts.
+A computer-vision capstone by **Rida Hafeez** that reads vehicle number plates and manages parking visits automatically. It combines a fine-tuned YOLO11n detector, RapidOCR, a FastAPI backend, and a browser dashboard.
 
-> **Project status:** Automatic image uploads and browser-camera scanning, plate detection and OCR, entry/exit, searchable records, minute billing, and printable receipts are implemented. Broader OCR and live-camera accuracy evaluation remain outstanding.
+**[Open the live demo](https://smartpark.up.railway.app/)** · **[API documentation](https://smartpark.up.railway.app/docs)** · **[Project report](reports/Smart_Parking_Report.pdf)**
 
-## What it does
+Hosted on **Railway**. No installation is needed to try the dashboard.
+
+> This is a shared academic demo without authentication. Visitors can view parking records and trigger entry/exit events. Use demonstration images. Live-camera accuracy and performance are still being evaluated.
+
+## What the app does
+
+- Accepts an uploaded image or frames from your browser's camera.
+- Detects the plate, reads its characters, and checks the reading before recording it.
+- Creates an entry when an accepted plate has no active parking session.
+- Closes the active session when the same plate appears again as a new event.
+- Calculates **Rs 10 per started minute**, with a minimum charge of Rs 10.
+- Shows active vehicles, searchable history, and receipts with browser **Print / Save PDF**.
+
+Completed sessions remain in history; they are not deleted.
+
+## Try the demo
+
+### Upload an image
+
+1. Open the [dashboard](https://smartpark.up.railway.app/) and select **Upload image**.
+2. Choose a clear JPG, PNG, or WebP vehicle image, up to 12 MB.
+3. Wait for the entry message and check **Active parking**.
+4. Select the same image again to record an exit and create a receipt.
+5. Select a different plate to start another visit.
+
+A failed request can be retried without duplicating its recorded event.
+
+### Use the live camera
+
+1. Select **Live camera → Start camera** and allow camera access.
+2. Hold one plate steady until the entry message appears.
+3. Remove it completely until the scanner says **Ready**.
+4. Show it again to record the exit.
+
+For a phone-screen demonstration, open the image full-screen, enlarge the plate, reduce glare, and hold the phone straight. The preview is live, but recognition samples frames sequentially; it does not analyze every video frame. Use one browser tab as the camera station.
+
+**A green box does not mean the plate has been read.** Automatic recording requires:
+
+| Check | Requirement |
+|---|---|
+| Plate detection score | At least 50% |
+| OCR score | At least 80%, with a valid normalized plate string |
+| Plate selection | Exactly one distinct readable plate; unreadable background plates are ignored |
+| Camera stability | Three matching readings spanning at least two seconds |
+| Same-plate reappearance | Three plate-free readings spanning at least three seconds before it can trigger again |
+
+If the app shows **Text unreadable**, no vehicle is saved. Improve focus, plate size, lighting, or viewing angle. Two different readable plates in one frame are treated as ambiguous. Confidence scores are not guarantees of correctness.
+
+## How it works
 
 ```text
-Image upload or camera frame → YOLO plate detection → RapidOCR → automatic entry/exit → receipt
+Image upload / browser camera
+              ↓
+       YOLO11n plate detection
+              ↓
+     Plate crop → RapidOCR text
+              ↓
+     Validation + repeat protection
+              ↓
+       Active parking session?
+        ├─ No  → Record entry
+        └─ Yes → Record exit → Calculate fee → Receipt
+              ↓
+         SQLite + dashboard
 ```
 
-A recognized plate starts a visit if it is not parked. Its next accepted appearance closes the visit. A different plate starts a separate visit. Completed visits stay in history.
+Entry and exit use server timestamps. Times are stored in UTC and displayed in Pakistan time. The rate is saved when a visit starts: 60 seconds costs Rs 10; 61 seconds costs Rs 20. Existing visits retain their saved tariff. Payment collection is not implemented.
 
-Camera mode requires three consistent readings spanning at least two seconds. A recorded plate cannot trigger again until the camera observes no plates for three readings spanning at least three seconds. Unreadable background plates are ignored when exactly one distinct plate passes the acceptance rules. Observations with no readable plate or multiple distinct readable plates are skipped. These rules reduce accidental repeated events; they cannot guarantee correct OCR.
+## Technical stack
 
-The detector locates plates and RapidOCR reads characters. Training labels contain bounding boxes, not plate text.
+| Layer | Technology |
+|---|---|
+| Plate detector | Ultralytics YOLO11n, fine-tuned on annotated vehicle images |
+| Text recognition | RapidOCR 3.10.0, PP-OCRv6, ONNX Runtime 1.31.0 |
+| Backend | Python, FastAPI, Uvicorn, Pillow |
+| Interface | HTML, CSS, JavaScript; served by FastAPI |
+| Database | SQLite |
+| Training | Google Colab, Tesla T4 GPU |
+| Deployment | Docker on Railway; CPU inference |
 
-## Model and evaluation
+A local GPU is not required. Camera frames and uploaded images are processed by the backend: on your computer for local use, or on Railway for the hosted demo.
 
-YOLO11n was fine-tuned for 30 epochs using a Tesla T4 in Google Colab. The report keeps validation and held-out test results separate:
+## Run locally on Windows
 
-| Split | Images | Plate instances | Precision | Recall | mAP@50 | mAP@50-95 |
-|---|---:|---:|---:|---:|---:|---:|
-| Validation | 141 | 157 | 0.922 | 0.866 | 0.914 | 0.634 |
-| Held-out test | 199 | 274 | 0.938 | 0.763 | 0.824 | 0.575 |
-
-The test set is held out from training. The lower test recall indicates that some plates are missed on unseen examples; this is an area for improvement. Training evidence and the dataset audit are saved in [`evidence/`](evidence/).
-
-## Tech stack
-
-- **Object detection:** Ultralytics YOLO11n
-- **API:** FastAPI and Uvicorn
-- **Image handling:** Pillow
-- **Training:** Google Colab with a Tesla T4 GPU
-- **Inference:** CPU supported; a local GPU is not required
-- **OCR:** RapidOCR (PP-OCRv6 via ONNX Runtime on CPU); EasyOCR retained as a comparison option
-- **Parking records:** SQLite sessions, fee calculation, and JSON receipts
-- **Interface:** responsive HTML/CSS/JavaScript dashboard served by FastAPI; no frontend build or separate server
-- **Receipts:** view saved visits and print or save as PDF through the browser
-
-## Run the plate detection API
-
-The API expects a trained checkpoint named `best.pt` in the repository root. The checkpoint and dataset are kept out of Git; this repository cannot run plate detection until you supply the checkpoint. Train one using the included Colab notebook and your labeled dataset, then download `best.pt` to the project root. The project author's existing local checkpoint also works.
-
-Clone the repository first:
+Install Python 3.12 and Git, then run these commands in PowerShell:
 
 ```powershell
 git clone https://github.com/ridahafeez786/Smart-car-parking-system.git
 cd Smart-car-parking-system
-```
-
-From a PowerShell terminal opened at the repository root:
-
-```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 .\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
 ```
 
-If Python 3.12 is not installed, use a Python version supported by your installed dependencies. Open **<http://127.0.0.1:8000/>** while the server remains running.
+Open **http://127.0.0.1:8000/**. Keep the terminal running while using the app; press **Ctrl+C** to stop it. API documentation is at **http://127.0.0.1:8000/docs**.
 
-### Image demo
+The trained **`best.pt` is included in the repository**. No retraining or dataset download is required to run the demo. OCR may download its models on first local use. Local records are stored in `storage/parking.sqlite3` by default.
 
-Select **Upload image** and choose a clear vehicle image. The application reads and records it automatically. Select the same image again to close the visit; select another plate to add another vehicle. No plate typing or confirmation is required. If a request fails, **Retry scan** reuses its event ID to prevent duplicate changes.
+## Deploy your copy on Railway
 
-### Live camera demo
+1. Connect your GitHub repository as a Railway service.
+2. Keep the service root at `/`. The included `Dockerfile` and `railway.json` define the build and health check; clear conflicting custom build/start commands.
+3. Attach a persistent volume at `/data`.
+4. Add the following service variables:
 
-Select **Live camera → Start camera**, allow the browser's camera permission, and hold your phone's plate image steady in front of the laptop camera. Wait for the entry message. Remove the phone until **Ready** appears, then show the same plate again to exit. Holding it continuously does not repeatedly toggle entry and exit. Use one browser tab as the station; separate tabs or devices are not coordinated as one camera.
+   | Variable | Value |
+   |---|---|
+   | `PORT` | `8080` |
+   | `SMARTPARK_DB_PATH` | `/data/parking.sqlite3` |
+   | `SMARTPARK_OCR` | `rapidocr` (the container default) |
 
-The webcam preview is continuous; CPU analysis samples frames sequentially, with a one-second pause between completed requests. Initial OCR loading can take longer. Use localhost or HTTPS for browser camera access. A remote phone browser accessing an ordinary HTTP LAN address may not have camera access.
+5. Deploy and wait for a successful health check.
+6. Under **Settings → Networking**, select **Generate Domain** and use target port **8080**.
+7. Open the HTTPS address, allow camera access, and test entry, exit, receipts, and persistence after a restart.
 
-**Tariff: Rs 10 per started minute**, minimum one minute, no grace period. An immediate exit costs Rs 10; exactly 60 seconds costs Rs 10; 61 seconds costs Rs 20. Existing visits retain the tariff saved at their entry, including older hourly visits. Receipts are available in history with **Print / Save PDF**.
+The Docker build installs CPU dependencies, includes `best.pt`, and exercises OCR to download its models before deployment. It runs one Uvicorn worker. Local datasets, databases, and private settings are excluded from the build context.
 
-Server timestamps are stored in UTC and displayed in Pakistan time. Records persist in `storage/parking.sqlite3`. API documentation remains at <http://127.0.0.1:8000/docs>.
+**Persistent storage matters:** setting the database path alone is not enough; the volume must also be mounted there. A new deployment starts with its own database, not your laptop's records. Railway resource usage is billed under your account's plan; the included domain does not make hosting free.
 
-## Automated checks
+## Dataset and detector results
+
+Images were collected from Kaggle and photographs of parked cars, then annotated in Roboflow and exported as YOLO bounding-box labels. The cleaned training split contains **821 images and 844 plate boxes**. Labels identify plate locations, not their text.
+
+YOLO11n was fine-tuned for **30 epochs**, at image size **640** and batch size **8**, on a Colab Tesla T4. Training took approximately **10.4 minutes**.
+
+| Split | Images | Plate boxes | Precision | Recall | mAP@50 | mAP@50-95 |
+|---|---:|---:|---:|---:|---:|---:|
+| Validation | 141 | 157 | 0.922 | 0.866 | 0.914 | 0.634 |
+| Held-out test | 199 | 274 | 0.938 | 0.763 | 0.824 | 0.575 |
+
+These are **plate-detection metrics**, not OCR or complete parking-system accuracy. Some plates are missed, particularly on challenging images. Exact duplicates were reconciled during cleanup; near-duplicate checking remains a limitation.
+
+The dataset is not distributed here. Check source permissions before redistributing images. To train your own detector, use the [Colab notebook](notebooks/train_plate_detector_colab.ipynb) with your labeled dataset.
+
+## OCR experimentation
+
+We started with **EasyOCR**, improved crop preprocessing and text ordering, and then selected **RapidOCR** after testing difficult stacked and green plates.
+
+| Pipeline | Exact matches on four development examples |
+|---|---:|
+| Improved EasyOCR | 3 / 4 |
+| RapidOCR with fallback | 4 / 4 |
+
+These examples were used during development, so this is **not a held-out benchmark or a claim of 100% accuracy**.
+
+The current pipeline tries a 256-pixel minimum-side resize, retries uncertain text at 736 pixels, and can compare original and inverted whole-crop readings for wide plates. The four examples remained correct after the resize update. Difficult readings may require more processing; Railway latency has not been systematically benchmarked.
+
+See the [original comparison](evidence/ocr_comparison.json) and [resize regression check](evidence/ocr_resize_regression.json). Reproduce with `python scripts/compare_ocr.py` after supplying the original dataset. To compare EasyOCR locally, set `$env:SMARTPARK_OCR="easyocr"` before starting the server.
+
+## Testing and troubleshooting
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-GitHub Actions runs the parking tests on pushes and pull requests. These check automatic toggling, event retries, camera stability and rearming, persistence, legacy tariff migration, billing boundaries, receipt access, and summary totals. The checks do not need a GPU, dataset, or model weights; they do not measure model accuracy.
+The last verified run passed **24 automated tests**, covering parking rules, billing boundaries, persistence, repeat protection, OCR ordering, and fallback agreement. These tests do not measure recognition accuracy. GitHub Actions also runs the test suite.
 
-## Train the detector
+| Symptom | What to check |
+|---|---|
+| Plate boxed but no entry | Read the OCR score and scanner status; detection alone is insufficient. |
+| Camera takes time to record | It needs three stable readings. Initial model loading, retries, CPU load, and upload speed add delay. |
+| Same plate does not exit | Remove it until **Ready**, then present it again. |
+| Camera will not start | Use HTTPS or localhost, allow permission, and close other apps using the camera. |
+| Records disappear after deployment | Verify the volume mount and `SMARTPARK_DB_PATH`. |
+| Railway cannot build | Verify repository root `/` and that the latest Docker configuration is deployed. |
 
-The Colab training notebook is [`notebooks/train_plate_detector_colab.ipynb`](notebooks/train_plate_detector_colab.ipynb). It uses the cleaned YOLO dataset and saves `best.pt`. Keep the test split for final evaluation; use the validation split when comparing training settings or confidence thresholds.
+Scan responses include `processing_seconds`; server logs report scan status, action, and processing time. Use them to distinguish an uncertain reading from a saved entry or a server error.
 
-The dataset is not included in this repository. It contains third-party vehicle images; check its license and permissions before redistributing it. The cleaned local copy, archive files, and training outputs are ignored by Git. The project-trained root `best.pt` is included for deployment; other model files remain ignored.
-
-## Railway deployment
-
-Deploy the repository root using the included `Dockerfile` and `railway.json`.
-Keep the service Root Directory at `/`, and clear any custom build/start command
-overrides so the Docker configuration is used. The container installs CPU PyTorch,
-loads the trained weights and RapidOCR during its build, and runs one Uvicorn worker
-on Railway's `PORT`. The `/health` endpoint checks startup.
-
-Attach a persistent volume at `/data` and set the service variable
-`SMARTPARK_DB_PATH=/data/parking.sqlite3` before recording visits. Without a volume,
-records in the container filesystem can disappear on redeployment. This starts a
-fresh cloud database; local parking history is not uploaded.
-
-After deployment succeeds, use Settings > Networking > Generate Domain and open
-the HTTPS address. Allow camera access in the browser. Test image upload, entry,
-exit, receipt, camera rearming, and persistence after a restart. Monitor memory and
-usage while OCR runs; hosting does not guarantee recognition accuracy or latency.
-
-This deployment is a shared demo parking lot, without authentication: public
-visitors can see its records and trigger events. Use demo plates only. The supplied
-Docker context excludes datasets, local databases, reports, and private settings.
-
-## Repository layout
+## Repository guide
 
 ```text
-backend/                 FastAPI detection and parking services
-backend/static/          Dashboard HTML, CSS, and JavaScript
-evidence/                Training evidence and dataset audit summary
-scripts/                 Dataset preparation and audit utilities
-notebooks/               Training notebook
+backend/          Detection, OCR, parking rules, API, and browser dashboard
+best.pt           Trained YOLO11n checkpoint
+notebooks/        Colab training notebook
+scripts/          Dataset audit, OCR comparison, and report tools
+tests/            Automated tests
+evidence/         Dataset audit and experiment results
+reports/          Project report
+Dockerfile        CPU deployment image
+railway.json      Railway build and health-check configuration
 ```
 
-## Limitations and next work
+## Current limitations
 
-- Evaluate OCR against manually transcribed plates and review uncertain readings.
-- Evaluate the phone-screen camera demo under blur, glare, motion and varying distances; add a tariff settings interface if needed.
-- Add direct PDF downloads if needed; current PDF saving uses the browser print dialog.
-- Evaluate OCR and the complete entry-to-exit workflow on separately labeled examples.
-- Improve missed detections using validation-set analysis, then report final results once on the held-out test set.
-
-This is an academic prototype, not a production access-control system. Automatic OCR can misidentify a vehicle even with a high score; the prototype is not suitable for unattended real billing without further evaluation and safeguards.
-
-## OCR engine comparison
-
-The default recognizer is RapidOCR 3.10.0 using bundled PP-OCRv6 models and ONNX Runtime 1.31.0 on CPU. Plate images are processed locally. Text blocks are spatially ordered. For wide crops with a weak or missing text detection, recognition of the entire crop is retried with original and inverted grayscale inputs; both must agree and pass the score threshold. Scores from different engines are not calibrated probabilities or directly comparable accuracy measures.
-
-Four previously inspected development images were compared: Cars281, Cars320, Cars307 and Cars323. EasyOCR read 3/4 correctly; the RapidOCR pipeline read 4/4, including MH01DB0001 on the green plate. This small, targeted comparison helped select an engine and fallback; it is **not a held-out OCR accuracy benchmark**. In this run EasyOCR took about 0.18–0.27 s per crop and RapidOCR about 0.93–1.60 s, excluding shared YOLO detection and including lazy initialization where applicable. Measure live latency separately.
-
-Reproduce with `python scripts/compare_ocr.py` after installing requirements and supplying the original local dataset and weights. Results are saved in `evidence/ocr_comparison.json`. To compare with the previous engine, set `$env:SMARTPARK_OCR="easyocr"` before starting Uvicorn. Default is `rapidocr`; switching requires a server restart.
-
-Cloud latency update: OCR now tries a 256-pixel minimum side before retrying
-the original 736-pixel setting on uncertain text. All four known development
-plates remained correct in `evidence/ocr_resize_regression.json`; this is a
-regression check, not held-out evaluation or a Railway latency benchmark.
-Difficult crops may take longer due to the retry. The Docker build exercises OCR
-to include its lazily downloaded models before deployment. Scan responses include
-`processing_seconds`, and server logs report scan status, action, and elapsed
-processing time without printing plate numbers. Camera recording still requires
-three consistent readings above the detection/OCR thresholds.
+This prototype does not infer physical travel direction: a new accepted appearance toggles the visit's state. Separate camera stations are not coordinated as a real entry/exit gate system. Blur, glare, tiny text, and OCR mistakes can prevent or misidentify a visit. A separate transcribed OCR test set, physical camera evaluation, access controls, and multi-user testing are needed before unattended real-world billing.
