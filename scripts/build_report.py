@@ -35,7 +35,7 @@ def page(n,title):
  C.setFillColor(TEAL);C.setFont('Helvetica-Bold',9);C.drawString(48,756,'SMART PARKING SYSTEM')
  C.setFillColor(GRAY);C.setFont('Helvetica',8);C.drawRightString(564,756,'Rida Hafeez | Capstone report')
  C.setStrokeColor(HexColor('#d5e1e3'));C.line(48,743,564,743)
- C.setFillColor(GRAY);C.setFont('Helvetica',8);C.drawString(48,28,'Development and evaluation | 14 October 2026');C.drawRightString(564,28,f'{n} / 5')
+ C.setFillColor(GRAY);C.setFont('Helvetica',8);C.drawString(48,28,'Development and evaluation | 15 October 2026');C.drawRightString(564,28,f'{n} / 5')
  Y=722;para(title,style=ParagraphStyle('title',parent=BODY,fontName='Helvetica-Bold',fontSize=22,leading=27,textColor=HexColor('#000000')),gap=14)
 
 def table(rows,widths):
@@ -107,7 +107,7 @@ para('Figure 4. Dashboard evidence showing live-camera controls and automatic ac
 head('Handling background vehicles')
 para('Initially, an image with two detected plates was rejected even if one was readable. We changed the rule: exactly one distinct plate passing detection ≥0.50, OCR ≥0.80 and format checks is processed, while unreadable background plates are ignored. Two distinct readable plates remain ambiguous. Cars311 verified that TN21AT8349 could enter despite an unreadable plate behind it.')
 
-page(5,'Billing verification and conclusion')
+page(5,'Verification and online deployment')
 para('The configured tariff is Rs 10 per started minute, with a minimum of one minute. An exit after 60 seconds costs Rs 10; after 61 seconds it costs Rs 20. The rate is saved at entry. Earlier visits keep their original tariff. Receipts show the plate, arrival, departure, duration and amount, and can be printed or saved as PDF.')
 head('Verification of the complete workflow')
 top=Y
@@ -117,12 +117,15 @@ para('Camera-frame API tests checked repeat suppression and rearming. A systemat
 image(ROOT/'evidence/automatic_receipt_test.jpg',355,top,209,302,(390,532,873,1234))
 Y=min(Y,top-310)
 para('Figure 5. Saved test receipt at the minute tariff. History retains the completed visit.',style=SMALL)
-head('Conclusion and remaining work')
-para('The project progressed from mixed-source image collection and Roboflow labels to a Colab-trained detector and a working local parking application. OCR experiments improved difficult development examples and led to RapidOCR as the default. The prototype supports automatic visits and receipts on a CPU, but blur, glare, small text and competing readable plates can still prevent correct operation.')
-para('Next, a separate transcribed OCR set should measure full-plate accuracy, character errors and incorrect accepted readings. Live tests should measure entry–exit matching and total processing time across lighting and viewing conditions. These checks are needed before making broader accuracy claims.',gap=8)
-para('<b>Evidence:</b> dataset_audit.txt; Colab training screenshot; ocr_comparison.json and compare_ocr.py; dashboard and receipt captures; automated tests. All are retained in the project. Collection and Roboflow workflow are described by the project author.',style=SMALL)
+head('Deployment on Railway')
+para('The application was deployed on Railway using the Hobby plan. A Docker build packages the FastAPI dashboard, CPU inference libraries and best.pt. Uvicorn listens on Railway\'s assigned PORT, while /health checks model startup. Visitors upload images or send camera frames from their own browser over HTTPS.')
+para('<b>Live application:</b> <link href="https://smartpark.up.railway.app/" color="#087e80">https://smartpark.up.railway.app/</link>',gap=7)
+para('Persistent SQLite storage is configured through SMARTPARK_DB_PATH; Railway must mount a volume at that location to retain visits across deployments. The deployed health endpoint confirmed model loading. A phone-screen trial produced unreadable text under glare, so live reliability is not yet established.',gap=7)
+para('A later OCR update uses a smaller initial resize and retries uncertain crops at the original resolution. All four development examples remained correct. Separate OCR and live-camera evaluation is still needed before claiming reliable unattended operation.',gap=7)
+para('<b>Evidence:</b> dataset audit, training capture, OCR comparisons, test suite and deployment configuration.',style=SMALL)
 C.save()
 reader=PdfReader(str(OUT));assert len(reader.pages)==5,len(reader.pages)
 pdf=pdfium.PdfDocument(str(OUT))
+(ROOT/'tmp/report_qa').mkdir(parents=True,exist_ok=True)
 for i,p in enumerate(pdf):p.render(scale=1.35).to_pil().save(ROOT/f'tmp/report_qa/page-{i+1}.png')
 print(f'Created {OUT} | {len(reader.pages)} pages')
